@@ -1,0 +1,5 @@
+Please help draft a Slack-ready response for this teammate request.
+
+We are testing the AI teammate for Slack in a fresh OpenAI Agents API session. No Slack workspace, channel history, files, or company context have been connected yet.
+
+Return a concise intake checklist, the missing context you need, and a sample Slack response format for future requests.
