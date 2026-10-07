@@ -14,15 +14,19 @@ Runnable Cloudflare Worker and curl-first example for the OpenAI Agents API. It 
 ```bash
 npm install
 export OPENAI_API_KEY="your-api-key"
+export SESSION_AUTH_SECRET="$(openssl rand -hex 32)"
 ```
 
 The app uses OpenAI project `proj_mRsQVx3NjOamxeXH6UrLowoC` via the `OpenAI-Project` header by default.
+
+`POST /api/sessions` requires `Authorization: Bearer <SESSION_AUTH_SECRET>`. If that secret is missing or shorter than 32 characters, the route returns 503 and does not start a session. Each client is limited to 30 attempts per 60 seconds before the bearer token is checked, using the `SESSION_ATTEMPT_LIMITER` rate-limit binding (`namespace_id` `61009`). The attempt key is `ip:` plus `CF-Connecting-IP`, or `ip:unknown` when that header is missing. Authenticated session starts are capped at 10 per 60 seconds for the whole Worker by the `SlackAiTeammateSessionStartLimiter` Durable Object. The Worker name is `slack-ai-teammate-agent`. See `rollout/README.md`.
 
 ## Run Locally
 
 ```bash
 npm run run:agent
 npm run typecheck
+npm test
 npm run dev
 ```
 
@@ -30,7 +34,10 @@ npm run dev
 
 ```bash
 npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put SESSION_AUTH_SECRET
 npm run deploy
 ```
+
+Do not commit `SESSION_AUTH_SECRET` or `OPENAI_API_KEY`. Set `SESSION_AUTH_SECRET` to a random value of at least 32 characters.
 
 Default Agents API environment is `openai_hosted`. Set `AGENTS_ENVIRONMENT_TYPE=none` only when no sandbox is needed.
