@@ -1,10 +1,15 @@
 import agentDefinition from "../config/agent-definition.json";
+import { guardSessionStart, SlackAiTeammateSessionStartLimiter } from "./session-guard";
+
+export { SlackAiTeammateSessionStartLimiter };
 
 interface Env {
   OPENAI_API_KEY: string;
   OPENAI_PROJECT: string;
   OPENAI_BASE_URL: string;
   AGENTS_ENVIRONMENT_TYPE: string;
+  SESSION_AUTH_SECRET?: string;
+  SESSION_START_LIMITER: DurableObjectNamespace;
 }
 
 type AgentCreateResponse = {
@@ -35,6 +40,9 @@ export default {
 };
 
 async function createAndStreamSession(request: Request, env: Env): Promise<Response> {
+  const denied = await guardSessionStart(request, env);
+  if (denied) return denied;
+
   if (!env.OPENAI_API_KEY) {
     return jsonResponse({ error: "OPENAI_API_KEY secret is not configured." }, 500);
   }
@@ -55,11 +63,16 @@ async function createAndStreamSession(request: Request, env: Env): Promise<Respo
     }
   }
 
-  const createAgent = await fetch(`${apiBase(env)}/agents`, {
-    method: "POST",
-    headers: openAiHeaders(env),
-    body: JSON.stringify(agentDefinition),
-  });
+  let createAgent: Response;
+  try {
+    createAgent = await fetch(`${apiBase(env)}/agents`, {
+      method: "POST",
+      headers: openAiHeaders(env),
+      body: JSON.stringify(agentDefinition),
+    });
+  } catch {
+    return jsonResponse({ error: "Failed to reach the Agents API." }, 502);
+  }
 
   if (!createAgent.ok) {
     return openAiError("create reusable agent", createAgent);
@@ -70,16 +83,21 @@ async function createAndStreamSession(request: Request, env: Env): Promise<Respo
     return jsonResponse({ error: "Create-agent response did not include an id.", response: agent }, 502);
   }
 
-  const session = await fetch(`${apiBase(env)}/agents/sessions`, {
-    method: "POST",
-    headers: openAiHeaders(env),
-    body: JSON.stringify({
-      agent_id: agent.id,
-      environment: createEnvironment(env),
-      input,
-      stream: true,
-    }),
-  });
+  let session: Response;
+  try {
+    session = await fetch(`${apiBase(env)}/agents/sessions`, {
+      method: "POST",
+      headers: openAiHeaders(env),
+      body: JSON.stringify({
+        agent_id: agent.id,
+        environment: createEnvironment(env),
+        input,
+        stream: true,
+      }),
+    });
+  } catch {
+    return jsonResponse({ error: "Failed to reach the Agents API." }, 502);
+  }
 
   if (!session.ok || !session.body) {
     return openAiError("start streamed session", session);
@@ -224,6 +242,18 @@ function renderHome(): string {
       color: inherit;
       font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
+    input[type="password"] {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 42px;
+      margin-bottom: 14px;
+      padding: 10px 14px;
+      border: 1px solid #c9d1dc;
+      border-radius: 8px;
+      background: #ffffff;
+      color: inherit;
+      font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
     button {
       margin-top: 12px;
       min-height: 42px;
@@ -267,10 +297,12 @@ function renderHome(): string {
 <body>
   <header>
     <h1>AI Teammate for Slack</h1>
-    <p>Create a reusable OpenAI Agents API teammate for Slack-style requests, start an OpenAI-hosted session from its returned agent ID, and stream raw session events.</p>
+    <p>Create a reusable OpenAI Agents API teammate for Slack-style requests, start an OpenAI-hosted session from its returned agent ID, and stream raw session events. Session starts require a bearer token. The token is checked after a per-IP attempt limit, and authenticated starts are capped globally.</p>
   </header>
   <main>
     <form id="agent-form">
+      <label for="session-token">Session token</label>
+      <input id="session-token" name="sessionToken" type="password" autocomplete="off" spellcheck="false">
       <label for="input">Initial user message</label>
       <textarea id="input" name="input">${escapeHtml(DEFAULT_INPUT)}</textarea>
       <button id="run" type="submit">Run teammate</button>
@@ -290,9 +322,12 @@ function renderHome(): string {
       output.textContent = "Starting session...\\n";
 
       try {
+        const headers = { "Content-Type": "application/json" };
+        const token = form.sessionToken.value.trim();
+        if (token) headers.Authorization = "Bearer " + token;
         const response = await fetch("/api/sessions", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ input: form.input.value })
         });
 
