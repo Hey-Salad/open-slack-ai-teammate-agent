@@ -19,7 +19,7 @@ it("returns 503 when the auth secret is shorter than 32 characters", async () =>
 
 it("applies the per-IP attempt limiter before the short-secret bearer check", async () => {
   const ip = "203.0.113.6";
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
     const response = await sessionRequest({ ip, token: "x".repeat(32) });
     expect(response.status).toBe(503);
   }

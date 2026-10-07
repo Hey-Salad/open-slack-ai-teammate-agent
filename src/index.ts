@@ -9,6 +9,7 @@ interface Env {
   OPENAI_BASE_URL: string;
   AGENTS_ENVIRONMENT_TYPE: string;
   SESSION_AUTH_SECRET?: string;
+  SESSION_ATTEMPT_LIMITER: RateLimit;
   SESSION_START_LIMITER: DurableObjectNamespace;
 }
 

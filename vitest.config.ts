@@ -42,6 +42,13 @@ export default defineConfig({
     projects: [
       workersProject("configured-auth", "test/configured-auth.spec.ts", "x".repeat(32)),
       workersProject("short-secret", "test/short-secret.spec.ts", "x".repeat(31)),
+      {
+        test: {
+          name: "config",
+          environment: "node",
+          include: ["test/ratelimit-namespace.spec.ts"],
+        },
+      },
     ],
   },
 });

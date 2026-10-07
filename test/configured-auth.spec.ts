@@ -27,7 +27,7 @@ describe("configured session auth", () => {
 
   it("counts attempts for ip: plus CF-Connecting-IP before accepting the bearer", async () => {
     const ip = "203.0.113.20";
-    for (let attempt = 0; attempt < 10; attempt += 1) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       const response = await sessionRequest({ ip, token: "wrong-token" });
       expect(response.status).toBe(401);
     }
@@ -41,7 +41,7 @@ describe("configured session auth", () => {
   });
 
   it("shares the ip:unknown bucket when CF-Connecting-IP is missing and ignores X-Forwarded-For", async () => {
-    for (let attempt = 0; attempt < 10; attempt += 1) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       const response = await sessionRequest({ token: "wrong-token", forwardedFor: `203.0.113.${attempt}` });
       expect(response.status).toBe(401);
     }

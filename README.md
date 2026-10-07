@@ -19,7 +19,7 @@ export SESSION_AUTH_SECRET="$(openssl rand -hex 32)"
 
 The app uses OpenAI project `proj_mRsQVx3NjOamxeXH6UrLowoC` via the `OpenAI-Project` header by default.
 
-`POST /api/sessions` requires `Authorization: Bearer <SESSION_AUTH_SECRET>`. If that secret is missing or shorter than 32 characters, the route returns 503 and does not start a session. Each client is limited to 10 attempts per 60 seconds before the bearer token is checked. The attempt key is `ip:` plus `CF-Connecting-IP`, or `ip:unknown` when that header is missing. Authenticated session starts are capped at 10 per 60 seconds for the whole Worker by the `SlackAiTeammateSessionStartLimiter` Durable Object. The Worker name is `slack-ai-teammate-agent`.
+`POST /api/sessions` requires `Authorization: Bearer <SESSION_AUTH_SECRET>`. If that secret is missing or shorter than 32 characters, the route returns 503 and does not start a session. Each client is limited to 30 attempts per 60 seconds before the bearer token is checked, using the `SESSION_ATTEMPT_LIMITER` rate-limit binding (`namespace_id` `61009`). The attempt key is `ip:` plus `CF-Connecting-IP`, or `ip:unknown` when that header is missing. Authenticated session starts are capped at 10 per 60 seconds for the whole Worker by the `SlackAiTeammateSessionStartLimiter` Durable Object. The Worker name is `slack-ai-teammate-agent`. See `rollout/README.md`.
 
 ## Run Locally
 

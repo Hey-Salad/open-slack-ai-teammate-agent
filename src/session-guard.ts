@@ -1,5 +1,4 @@
 const MIN_SESSION_AUTH_SECRET_LENGTH = 32;
-const IP_ATTEMPT_LIMIT = 10;
 const GLOBAL_SESSION_START_LIMIT = 10;
 const WINDOW_MS = 60_000;
 const LIMITER_OBJECT_NAME = "slack-ai-teammate-session-start";
@@ -12,6 +11,7 @@ type WindowCounter = {
 
 type GuardEnv = {
   SESSION_AUTH_SECRET?: string;
+  SESSION_ATTEMPT_LIMITER: RateLimit;
   SESSION_START_LIMITER: DurableObjectNamespace;
 };
 
@@ -32,16 +32,6 @@ export class SlackAiTeammateSessionStartLimiter implements DurableObject {
       return jsonResponse({ error: "Method not allowed" }, 405);
     }
 
-    if (url.pathname === "/attempt") {
-      const body = (await request.json().catch(() => null)) as { key?: unknown } | null;
-      const key = body?.key;
-      if (typeof key !== "string" || !key.startsWith("ip:") || key.length > `ip:${"x".repeat(MAX_IP_LENGTH)}`.length) {
-        return jsonResponse({ error: "Invalid attempt key." }, 400);
-      }
-      const allowed = await consume(this.state.storage, `attempt:${key}`, IP_ATTEMPT_LIMIT);
-      return jsonResponse({ allowed }, allowed ? 200 : 429);
-    }
-
     if (url.pathname === "/session-start") {
       const allowed = await consume(this.state.storage, "session-start:global", GLOBAL_SESSION_START_LIMIT);
       return jsonResponse({ allowed }, allowed ? 200 : 429);
@@ -52,7 +42,7 @@ export class SlackAiTeammateSessionStartLimiter implements DurableObject {
 }
 
 export async function guardSessionStart(request: Request, env: GuardEnv): Promise<Response | null> {
-  const attempt = await postLimiter(env, "/attempt", { key: clientAttemptKey(request) });
+  const attempt = await limitIpAttempt(env, clientAttemptKey(request));
   if (!attempt.ok) return attempt.response;
   if (!attempt.allowed) {
     return jsonResponse({ error: "Too many session start attempts from this client." }, 429, {
@@ -93,6 +83,21 @@ async function consume(storage: DurableObjectStorage, key: string, limit: number
     await txn.put(key, { windowStart: current.windowStart, count: current.count + 1 } satisfies WindowCounter);
     return true;
   });
+}
+
+async function limitIpAttempt(
+  env: GuardEnv,
+  key: string,
+): Promise<{ ok: true; allowed: boolean; response?: undefined } | { ok: false; allowed?: undefined; response: Response }> {
+  try {
+    const outcome = await env.SESSION_ATTEMPT_LIMITER.limit({ key });
+    return { ok: true, allowed: outcome.success };
+  } catch {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Session start protection is unavailable." }, 503),
+    };
+  }
 }
 
 async function postLimiter(
